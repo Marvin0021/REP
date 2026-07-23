@@ -1,1 +1,0 @@
-console.log("Mi proyecto ha iniciado correctamente.");
