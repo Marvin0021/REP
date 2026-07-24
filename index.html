@@ -1,19 +1,399 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-    <link rel="stylesheet" href="style/style.css">
-    <script src="js/script.js" defer></script>
+<meta charset="UTF-8">
+<title>Enlace de cámara remota</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0c0d;
+    --panel:#14181a;
+    --panel-2:#1b2124;
+    --line:#262d30;
+    --text:#e8ecee;
+    --muted:#7f8a8f;
+    --signal:#49f2a1;
+    --signal-dim:#1f5c43;
+    --warn:#f2b84a;
+    --danger:#f25c54;
+    --mono:'JetBrains Mono', monospace;
+    --sans:'Inter', sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);}
+  #root{min-height:100%;}
+  ::selection{background:var(--signal);color:#04120b;}
+
+  /* ---------- shared ---------- */
+  .screen{min-height:100vh;display:flex;flex-direction:column;}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+  .dot.live{background:var(--signal);box-shadow:0 0 8px var(--signal);animation:pulse 1.4s infinite;}
+  .dot.off{background:var(--danger);}
+  .dot.wait{background:var(--warn);animation:pulse 1.4s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+  .mono{font-family:var(--mono);}
+  button{font-family:var(--sans);cursor:pointer;border:none;}
+  a{color:inherit;}
+
+  /* ---------- generator screen ---------- */
+  .gen-wrap{max-width:760px;margin:0 auto;padding:56px 24px 80px;width:100%;}
+  .brand{display:flex;align-items:center;gap:10px;margin-bottom:48px;}
+  .brand .dot{background:var(--signal);box-shadow:0 0 8px var(--signal);}
+  .brand span{font-family:var(--mono);font-size:13px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;}
+  h1{font-size:28px;font-weight:700;letter-spacing:-0.02em;margin:0 0 6px;}
+  .sub{color:var(--muted);font-size:15px;line-height:1.55;margin:0 0 40px;max-width:520px;}
+
+  .token-panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px;margin-bottom:32px;position:relative;overflow:hidden;}
+  .token-panel::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--signal),transparent);animation:sweep 3s linear infinite;}
+  @keyframes sweep{0%{transform:translateX(-100%);}100%{transform:translateX(100%);}}
+  .token-label{font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;margin-bottom:10px;}
+  .token-value{font-family:var(--mono);font-size:44px;font-weight:700;letter-spacing:.1em;color:var(--signal);line-height:1;}
+  .regen{margin-top:18px;background:transparent;border:1px solid var(--line);color:var(--muted);padding:9px 16px;border-radius:8px;font-size:13px;transition:.15s;}
+  .regen:hover{border-color:var(--signal);color:var(--signal);}
+
+  .link-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;margin-bottom:16px;display:flex;gap:18px;align-items:center;}
+  .link-card .qr{flex:none;width:96px;height:96px;background:#fff;border-radius:8px;padding:6px;display:flex;align-items:center;justify-content:center;}
+  .link-card .qr img,.link-card .qr canvas{width:100%!important;height:100%!important;}
+  .link-body{flex:1;min-width:0;}
+  .link-tag{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;}
+  .link-tag.cam{color:var(--warn);}
+  .link-tag.view{color:var(--signal);}
+  .link-desc{font-size:13px;color:var(--muted);margin-bottom:10px;line-height:1.5;}
+  .link-row{display:flex;gap:8px;align-items:center;}
+  .link-url{font-family:var(--mono);font-size:12px;color:var(--text);background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:9px 12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .copy-btn,.open-btn{font-family:var(--mono);font-size:12px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:9px 12px;border-radius:7px;transition:.15s;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;}
+  .copy-btn:hover,.open-btn:hover{border-color:var(--signal);color:var(--signal);}
+  .copy-btn.copied{border-color:var(--signal);color:var(--signal);}
+
+  .notes{font-size:12.5px;color:var(--muted);line-height:1.7;border-top:1px solid var(--line);padding-top:20px;margin-top:28px;}
+  .notes b{color:var(--text);}
+
+  /* ---------- cam / view fullscreen ---------- */
+  .stage{position:relative;flex:1;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;}
+  video{width:100%;height:100%;object-fit:cover;background:#000;}
+  .scanline{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--signal),transparent);opacity:.5;animation:scan 3.2s linear infinite;pointer-events:none;}
+  @keyframes scan{0%{top:0;}100%{top:100%;}}
+
+  .hud-top{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;padding:16px;background:linear-gradient(to bottom, rgba(0,0,0,.65), transparent);z-index:5;}
+  .hud-chip{font-family:var(--mono);font-size:12px;background:rgba(10,12,13,.55);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(6px);border-radius:20px;padding:7px 12px;display:flex;align-items:center;gap:7px;color:var(--text);}
+  .hud-bottom{position:absolute;bottom:0;left:0;right:0;display:flex;justify-content:center;align-items:center;padding:22px;background:linear-gradient(to top, rgba(0,0,0,.7), transparent);z-index:5;gap:14px;}
+  .shutter{width:64px;height:64px;border-radius:50%;background:#fff;border:4px solid rgba(255,255,255,.35);transition:.12s;}
+  .shutter:active{transform:scale(.9);}
+  .fs-btn{font-family:var(--mono);font-size:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:#fff;padding:10px 14px;border-radius:20px;}
+
+  .center-msg{color:var(--muted);font-family:var(--mono);font-size:13px;text-align:center;padding:24px;line-height:1.8;}
+  .center-msg .dot{margin-right:6px;}
+  .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:9;}
+  .flash.on{animation:flash .35s ease-out;}
+  @keyframes flash{0%{opacity:.9;}100%{opacity:0;}}
+
+  .shot-preview{position:absolute;bottom:110px;left:22px;width:76px;height:76px;border-radius:10px;border:2px solid var(--signal);overflow:hidden;z-index:6;box-shadow:0 4px 20px rgba(0,0,0,.5);display:none;}
+  .shot-preview img{width:100%;height:100%;object-fit:cover;}
+
+  @media(max-width:520px){
+    .token-value{font-size:34px;}
+    .link-card{flex-direction:column;align-items:stretch;}
+    .link-card .qr{align-self:center;}
+  }
+</style>
 </head>
 <body>
-    <h1>Marvin Josue Borja Hurtado</h1>
-<p>Estudiante de Bachillerato Técnico Vocacional en Desarrollo de Software.</p>
+<div id="root"></div>
 
-<h2>Acerca de mí</h2>
-<p>
-Me apasiona la tecnología, el desarrollo de software y la creación de aplicaciones web innovadoras. Disfruto aprender nuevas herramientas de programación y participar en proyectos tecnológicos que me permitan mejorar mis habilidades.
-</p>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+const root = document.getElementById('root');
+const params = new URLSearchParams(location.search);
+const role = params.get('r');
+const tokenParam = params.get('t');
+
+function genToken(){
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let t = '';
+  for(let i=0;i<6;i++) t += chars[Math.floor(Math.random()*chars.length)];
+  return t;
+}
+function baseUrl(){
+  return location.origin + location.pathname;
+}
+
+/* ================= GENERATOR SCREEN ================= */
+function renderGenerator(){
+  const token = genToken();
+  const camLink = `${baseUrl()}?t=${token}&r=cam`;
+  const viewLink = `${baseUrl()}?t=${token}&r=view`;
+
+  root.innerHTML = `
+    <div class="screen">
+      <div class="gen-wrap">
+        <div class="brand"><span class="dot"></span><span>Enlace de cámara &middot; sesión en vivo</span></div>
+        <h1>Genera un enlace de cámara</h1>
+        <p class="sub">Se crean dos enlaces con el mismo código. Abre el de <b style="color:var(--warn)">cámara</b> en el teléfono que va a transmitir, y el de <b style="color:var(--signal)">visor</b> en la pantalla donde quieres ver la imagen en vivo, la batería y tomar fotos.</p>
+
+        <div class="token-panel">
+          <div class="token-label">Código de sesión</div>
+          <div class="token-value" id="token-value">${token}</div>
+          <button class="regen" id="regen-btn">Generar otro código</button>
+        </div>
+
+        <div class="link-card">
+          <div class="qr" id="qr-cam"></div>
+          <div class="link-body">
+            <div class="link-tag cam">Enlace de cámara</div>
+            <div class="link-desc">Envíalo al teléfono que transmitirá. Al abrirlo pedirá permiso de cámara.</div>
+            <div class="link-row">
+              <div class="link-url" id="cam-url">${camLink}</div>
+              <button class="copy-btn" data-copy="${camLink}">Copiar</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="link-card">
+          <div class="qr" id="qr-view"></div>
+          <div class="link-body">
+            <div class="link-tag view">Enlace de visor</div>
+            <div class="link-desc">Ábrelo tú para ver la imagen en vivo, el porcentaje de batería y tomar fotos.</div>
+            <div class="link-row">
+              <div class="link-url" id="view-url">${viewLink}</div>
+              <a class="open-btn" href="${viewLink}" target="_blank">Abrir</a>
+              <button class="copy-btn" data-copy="${viewLink}">Copiar</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="notes">
+          <b>Cómo funciona:</b> la imagen viaja directo entre los dos navegadores (WebRTC), sin subirse a ningún servidor. &middot;
+          Ambos dispositivos necesitan internet y mantener la pestaña abierta. &middot;
+          La batería depende de que el navegador del teléfono la soporte (funciona en Chrome/Android; en iPhone puede no estar disponible). &middot;
+          El enlace de cámara debe abrirse <b>después</b> de tener listo el visor, o justo antes — ambos deben estar abiertos al mismo tiempo para conectarse.
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('regen-btn').onclick = renderGenerator;
+
+  document.querySelectorAll('.copy-btn').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const val = btn.getAttribute('data-copy');
+      try{
+        await navigator.clipboard.writeText(val);
+      }catch(e){
+        const ta = document.createElement('textarea');
+        ta.value = val; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
+      }
+      const orig = btn.textContent;
+      btn.textContent = 'Copiado ✓';
+      btn.classList.add('copied');
+      setTimeout(()=>{btn.textContent = orig; btn.classList.remove('copied');}, 1500);
+    };
+  });
+
+  try{
+    new QRCode(document.getElementById('qr-cam'), {text: camLink, width:180, height:180, colorDark:'#0a0c0d', colorLight:'#ffffff'});
+    new QRCode(document.getElementById('qr-view'), {text: viewLink, width:180, height:180, colorDark:'#0a0c0d', colorLight:'#ffffff'});
+  }catch(e){ /* QR opcional, los enlaces siguen funcionando sin esto */ }
+}
+
+/* ================= CAMERA SCREEN ================= */
+function renderCamera(token){
+  root.innerHTML = `
+    <div class="screen">
+      <div class="stage" id="stage">
+        <div class="center-msg" id="cam-msg"><span class="dot wait"></span>Pidiendo acceso a la cámara…</div>
+        <video id="cam-video" autoplay playsinline muted style="display:none"></video>
+        <div class="scanline" id="scanline" style="display:none"></div>
+        <div class="hud-top" id="hud-top" style="display:none">
+          <div class="hud-chip"><span class="dot wait" id="conn-dot"></span><span id="conn-text">Esperando visor…</span></div>
+          <div class="hud-chip"><span id="batt-icon">🔋</span><span id="batt-text" class="mono">--%</span></div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const msg = document.getElementById('cam-msg');
+  const video = document.getElementById('cam-video');
+  const stage = document.getElementById('stage');
+  const hudTop = document.getElementById('hud-top');
+  const scanline = document.getElementById('scanline');
+  const connDot = document.getElementById('conn-dot');
+  const connText = document.getElementById('conn-text');
+  const battText = document.getElementById('batt-text');
+
+  let dataConns = [];
+  let battInfo = null;
+
+  function sendBattery(){
+    if(!battInfo) return;
+    dataConns.forEach(c=>{ try{ c.send({type:'battery', level:battInfo.level, charging:battInfo.charging}); }catch(e){} });
+  }
+
+  function setupBattery(){
+    if(navigator.getBattery){
+      navigator.getBattery().then(b=>{
+        battInfo = {level: Math.round(b.level*100), charging: b.charging};
+        battText.textContent = battInfo.level + '%';
+        sendBattery();
+        b.addEventListener('levelchange', ()=>{ battInfo.level = Math.round(b.level*100); battText.textContent = battInfo.level+'%'; sendBattery(); });
+        b.addEventListener('chargingchange', ()=>{ battInfo.charging = b.charging; sendBattery(); });
+      }).catch(()=>{ battText.textContent = 'N/D'; });
+    } else {
+      battText.textContent = 'N/D';
+    }
+  }
+
+  navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}, audio:false}).then(stream=>{
+    video.srcObject = stream;
+    video.style.display = 'block';
+    scanline.style.display = 'block';
+    hudTop.style.display = 'flex';
+    msg.remove();
+    setupBattery();
+
+    const peer = new Peer('cam-'+token, {debug:0});
+    peer.on('open', ()=>{ connText.textContent = 'Esperando visor…'; });
+
+    peer.on('call', call=>{
+      call.answer(stream);
+    });
+
+    peer.on('connection', conn=>{
+      dataConns.push(conn);
+      conn.on('open', ()=>{
+        connDot.className = 'dot live';
+        connText.textContent = 'Visor conectado';
+        sendBattery();
+      });
+      conn.on('close', ()=>{
+        dataConns = dataConns.filter(c=>c!==conn);
+        if(dataConns.length===0){ connDot.className='dot wait'; connText.textContent='Esperando visor…'; }
+      });
+    });
+
+    peer.on('error', err=>{
+      connDot.className = 'dot off';
+      connText.textContent = 'Error de conexión';
+      console.error(err);
+    });
+
+  }).catch(err=>{
+    msg.innerHTML = '<span class="dot off"></span>No se pudo acceder a la cámara.<br>Revisa los permisos del navegador y vuelve a intentarlo.';
+    console.error(err);
+  });
+}
+
+/* ================= VIEWER SCREEN ================= */
+function renderViewer(token){
+  root.innerHTML = `
+    <div class="screen">
+      <div class="stage" id="stage">
+        <div class="center-msg" id="view-msg"><span class="dot wait"></span>Conectando con la cámara…<br><span style="opacity:.7">Asegúrate de que el enlace de cámara ya esté abierto en el otro dispositivo.</span></div>
+        <video id="view-video" autoplay playsinline muted style="display:none"></video>
+        <div class="scanline" id="scanline" style="display:none"></div>
+        <div class="flash" id="flash"></div>
+        <img id="shot-img" style="display:none"/>
+        <div class="shot-preview" id="shot-preview"><img id="shot-thumb"/></div>
+
+        <div class="hud-top" id="hud-top" style="display:none">
+          <div class="hud-chip"><span class="dot wait" id="conn-dot"></span><span id="conn-text">Conectando…</span></div>
+          <div class="hud-chip"><span id="batt-icon">🔋</span><span id="batt-text" class="mono">--%</span></div>
+        </div>
+        <div class="hud-bottom" id="hud-bottom" style="display:none">
+          <button class="fs-btn" id="fs-btn">Pantalla completa</button>
+          <button class="shutter" id="shutter-btn" title="Tomar foto"></button>
+          <a class="fs-btn" id="dl-btn" style="display:none" download="foto.png">Descargar</a>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const msg = document.getElementById('view-msg');
+  const video = document.getElementById('view-video');
+  const hudTop = document.getElementById('hud-top');
+  const hudBottom = document.getElementById('hud-bottom');
+  const scanline = document.getElementById('scanline');
+  const connDot = document.getElementById('conn-dot');
+  const connText = document.getElementById('conn-text');
+  const battText = document.getElementById('batt-text');
+  const flash = document.getElementById('flash');
+  const shotPreview = document.getElementById('shot-preview');
+  const shotThumb = document.getElementById('shot-thumb');
+  const dlBtn = document.getElementById('dl-btn');
+  const shutterBtn = document.getElementById('shutter-btn');
+  const fsBtn = document.getElementById('fs-btn');
+
+  const peer = new Peer(undefined, {debug:0});
+
+  peer.on('open', ()=>{
+    const conn = peer.connect('cam-'+token);
+    conn.on('open', ()=>{
+      connDot.className = 'dot live';
+      connText.textContent = 'En vivo';
+    });
+    conn.on('data', data=>{
+      if(data && data.type==='battery'){
+        battText.textContent = data.level + '%' + (data.charging ? ' ⚡' : '');
+        battText.style.color = data.level<=20 && !data.charging ? 'var(--danger)' : 'var(--text)';
+      }
+    });
+    conn.on('close', ()=>{
+      connDot.className = 'dot off';
+      connText.textContent = 'Desconectado';
+    });
+
+    const call = peer.call('cam-'+token, new MediaStream());
+    call.on('stream', remoteStream=>{
+      video.srcObject = remoteStream;
+      video.style.display = 'block';
+      scanline.style.display = 'block';
+      hudTop.style.display = 'flex';
+      hudBottom.style.display = 'flex';
+      msg.remove();
+    });
+    call.on('error', err=>{ console.error(err); });
+  });
+
+  peer.on('error', err=>{
+    connDot.className = 'dot off';
+    connText.textContent = 'Error de conexión';
+    msg.innerHTML = '<span class="dot off"></span>No se pudo conectar con la cámara.<br>Verifica que el enlace de cámara esté abierto y con permisos concedidos.';
+    console.error(err);
+  });
+
+  fsBtn.onclick = ()=>{
+    const el = document.documentElement;
+    if(el.requestFullscreen) el.requestFullscreen();
+  };
+
+  shutterBtn.onclick = ()=>{
+    if(!video.videoWidth) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video,0,0);
+    const url = canvas.toDataURL('image/png');
+
+    flash.classList.remove('on'); void flash.offsetWidth; flash.classList.add('on');
+    shotThumb.src = url;
+    shotPreview.style.display = 'block';
+    dlBtn.href = url;
+    dlBtn.style.display = 'inline-flex';
+    dlBtn.download = 'foto-' + Date.now() + '.png';
+  };
+}
+
+/* ================= ROUTER ================= */
+if(role==='cam' && tokenParam){
+  renderCamera(tokenParam);
+} else if(role==='view' && tokenParam){
+  renderViewer(tokenParam);
+} else {
+  renderGenerator();
+}
+</script>
 </body>
 </html>
