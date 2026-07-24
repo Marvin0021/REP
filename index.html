@@ -257,16 +257,15 @@ function renderCamera(token){
     const peer = new Peer('cam-'+token, {debug:0});
     peer.on('open', ()=>{ connText.textContent = 'Esperando visor…'; });
 
-    peer.on('call', call=>{
-      call.answer(stream);
-    });
-
     peer.on('connection', conn=>{
       dataConns.push(conn);
       conn.on('open', ()=>{
         connDot.className = 'dot live';
         connText.textContent = 'Visor conectado';
         sendBattery();
+        // La cámara es quien inicia la llamada de video: es la que tiene
+        // pistas reales, así que la oferta SDP sí incluye el canal de video.
+        peer.call(conn.peer, stream);
       });
       conn.on('close', ()=>{
         dataConns = dataConns.filter(c=>c!==conn);
@@ -344,8 +343,12 @@ function renderViewer(token){
       connDot.className = 'dot off';
       connText.textContent = 'Desconectado';
     });
+  });
 
-    const call = peer.call('cam-'+token, new MediaStream());
+  // La cámara inicia la llamada de video una vez que ve el canal de datos
+  // abierto; aquí solo la recibimos y contestamos (sin stream propio).
+  peer.on('call', call=>{
+    call.answer();
     call.on('stream', remoteStream=>{
       video.srcObject = remoteStream;
       video.style.display = 'block';
